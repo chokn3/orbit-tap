@@ -374,6 +374,12 @@
     document.getElementById('game').addEventListener('pointerdown', (e) => {
       // Prevent default behavior (like double-tap zooming on some phones)
       e.preventDefault();
+      
+      // Instantly unlocks browser audio if the player taps during the countdown
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      
       handleTap();
     });
 
@@ -1096,12 +1102,14 @@ function showGameOver(reason = "GAME OVER") {
 
     function resumeGame() {
       hideAllOverlays();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
       startCountdown(() => { gameState = 'playing'; });
     }
 
     function restartGame() {
       hideAllOverlays();
       initState();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
       startCountdown(() => { gameState = 'playing'; });
     }
 
