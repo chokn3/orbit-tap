@@ -503,6 +503,50 @@
       crash: () => playTone(150, 'sawtooth', 0.35, 0.1, 40)   // Gritty descending buzz
     };
 
+    // --- 8-BIT MUSIC SEQUENCER ---
+    function playMusicTone(freq, vol = 0.02) {
+      if (!isSoundEnabled) return;
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'square'; // Classic retro Nintendo sound
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      
+      // Fast attack and decay for a short, plucked chiptune note
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    let bgmInterval;
+    function startBGM() {
+      clearInterval(bgmInterval);
+      
+      // A spacey, high-energy C minor pentatonic arpeggio sequence
+      const notes = [
+        261.63, 311.13, 392.00, 523.25, 
+        392.00, 311.13, 261.63, 196.00,
+        261.63, 311.13, 392.00, 622.25,
+        523.25, 392.00, 311.13, 196.00
+      ];
+      let step = 0;
+      
+      bgmInterval = setInterval(() => {
+        // Only play music while the game is active or counting down
+        if (gameState === 'playing' || gameState === 'countdown') {
+          playMusicTone(notes[step]);
+          step = (step + 1) % notes.length;
+        }
+      }, 130); // Speed of the track (lower is faster)
+    }
+
 
 
 /* ============================================================
@@ -1008,6 +1052,8 @@
     ============================================================ */
 function showGameOver(reason = "GAME OVER") {
       gameState = 'dead';
+      clearInterval(bgmInterval); // Stop the background music when you crash
+      
       /* increment play count */
       const plays = parseInt(localStorage.getItem('orbitPlays') || '0') + 1;
       localStorage.setItem('orbitPlays', plays);
@@ -1069,9 +1115,13 @@ function showGameOver(reason = "GAME OVER") {
     /* ============================================================
        COUNTDOWN  3 → 2 → 1 → GO!
     ============================================================ */
-    function startCountdown(callback) {
+      function startCountdown(callback) {
       let n = 3;
       const el = document.getElementById('countdown-val');
+      
+      gameState = 'countdown'; // Let the system know it's safe to play audio
+      startBGM();              // Start the music loop
+      
       showOverlay('overlay-countdown');
 
       function tick() {
