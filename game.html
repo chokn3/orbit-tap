@@ -465,8 +465,8 @@
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     const audioCtx = new AudioContext();
     
-    // We will hook this variable up to the settings menu later
-    let isSoundEnabled = true; 
+    // Sync sound setting with localStorage preference (defaults to true if not set)
+    let isSoundEnabled = localStorage.getItem('orbitSound') !== 'false';
 
     function playTone(freq, type, duration, vol = 0.05, slideFreq = null) {
       if (!isSoundEnabled) return;
@@ -712,7 +712,9 @@
       let d = angle - gateAngle;
       d = ((d % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
       if (d > Math.PI) d = Math.PI * 2 - d;
-      return d < currentGateArc; // Uses dynamic shrinking boundary
+      
+      let dynamicGateArc = feverActive ? BASE_GATE_ARC * 2.0 : BASE_GATE_ARC;
+      return d < dynamicGateArc;
     }
 
 
@@ -1078,6 +1080,13 @@ function showGameOver(reason = "GAME OVER") {
         void el.offsetWidth;           /* force reflow */
         el.style.animation = 'countPop .35s cubic-bezier(.34,1.6,.64,1)';
         el.textContent = n > 0 ? String(n) : 'GO!';
+
+        // Play an 8-bit countdown audio blip
+        if (n > 0) {
+          playTone(440, 'square', 0.08, 0.03); // Medium pitch for 3, 2, 1
+        } else {
+          playTone(880, 'square', 0.18, 0.05); // High pitch exclamation for GO!
+        }
 
         if (n === 0) {
           setTimeout(() => { hideAllOverlays(); callback(); }, 450);
