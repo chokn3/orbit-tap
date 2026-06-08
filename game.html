@@ -917,11 +917,11 @@
         shakeAmt *= 0.72;
       }
 
-        /* clear */
+    /* clear */
       if (feverActive) {
-        // Subtle, dark color shift based on the animation time (t)
-        const hue = (t / 15) % 360;
-        ctx.fillStyle = `hsl(${hue}, 45%, 15%)`;
+        // Faster color shift and slightly brighter to make it noticeable
+        const hue = (t / 4) % 360;
+        ctx.fillStyle = `hsl(${hue}, 60%, 20%)`;
       } else {
         ctx.fillStyle = '#1a1025';
       }
@@ -958,8 +958,10 @@
       drawRings();
       drawCenter();
 
-      if (gameState === 'playing' || gameState === 'dead') {
-        angle += speed * angleDir; // Applies variable clockwise or counter-clockwise tracking
+    if (gameState === 'playing' || gameState === 'dead') {
+        // Temporarily boost speed by 50% during fever mode
+        const activeSpeed = feverActive ? speed * 1.5 : speed;
+        angle += activeSpeed * angleDir; // Applies variable clockwise or counter-clockwise tracking
         drawDot();
       }
 
