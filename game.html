@@ -840,12 +840,29 @@
         syncHUD();
 
       } else {
-        /* ─── MISS → CRASH ─── */
-        sfx.crash();
-        deathBurst(px, py);
-        shakeAmt  = 12;
-        gameState = 'dead';
-        setTimeout(() => showGameOver("CRASHED"), 650);
+        /* ─── MISS → CHECK FOR SHIELD BUFFER ─── */
+        if (perfectStreak >= 3) {
+          // Break the streak to consume the shield, saving the player!
+          perfectStreak = 0; 
+          shakeAmt = 15;
+          currentFeedback = "SHIELD USED! SAVED!";
+          feedbackAlpha = 1.0;
+          
+          // Generate a massive blast of protective safety sparks from the core center outward
+          burst(CX, CY, '#ffffff', 40);
+          sfx.combo(); // Play a rewarding recovery sound
+          
+          // Shuffle the gate immediately so they can try again safely on the same ring
+          gateAngle = Math.random() * Math.PI * 2;
+          gateDir = Math.random() < 0.5 ? 1 : -1;
+        } else {
+          // If they don't have a shield, trigger the standard game over routine
+          sfx.crash();
+          deathBurst(px, py);
+          shakeAmt  = 12;
+          gameState = 'dead';
+          setTimeout(() => showGameOver("CRASHED"), 650);
+        }
       }
     }
 
@@ -1036,7 +1053,8 @@
       drawRings();
       drawCenter();
 
-    if (gameState === 'playing' || gameState === 'dead') {
+      // Only draw and move the dot while actively playing
+      if (gameState === 'playing') {
         // Temporarily boost speed by 50% during fever mode
         const activeSpeed = feverActive ? speed * 1.5 : speed;
         angle += activeSpeed * angleDir; // Applies variable clockwise or counter-clockwise tracking
