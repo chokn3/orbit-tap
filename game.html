@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1a1025" />
+  <title>Orbit Tap — Play</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       RESET & VARIABLES  (same palette as index.html)
+    ============================================================ */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:      #1a1025;
+      --panel:   #2a1d42;
+      --accent1: #f7c873;   /* amber  — primary   */
+      --accent2: #e8845c;   /* coral  — danger     */
+      --accent3: #a78bfa;   /* lavender            */
+      --accent4: #67e8b0;   /* mint                */
+      --muted:   #8b7aa0;
+      --shadow1: #8a5c10;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;       /* Hides any scrollbars */
+      touch-action: none;     /* Prevents mobile "pull-to-refresh" and zooming */
+      background: var(--bg);
+      font-family: 'Press Start 2P', monospace;
+      user-select: none;
+      -webkit-user-select: none;
+      color: #f0e6d3;
+      cursor: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ============================================================
+       LAYER STACK
+       1  starfield canvas
+       2  CRT vignette
+       3  scanlines
+       10 game canvas
+       20 HUD / pips
+       30 combo flash
+       50 overlays
+       90 flash transition
+       99 cursor
+    ============================================================ */
+
+    /* ── starfield ── */
+    #starfield {
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    }
+
+    /* ── CRT vignette ── */
+    #vignette {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.70) 100%);
+    }
+
+    /* ── scanlines ── */
+    #scanlines {
+      position: fixed; inset: 0; z-index: 3; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent, transparent 3px,
+        rgba(0,0,0,0.035) 3px, rgba(0,0,0,0.035) 4px
+      );
+    }
+
+    /* ── game canvas ── */
+    #game {
+      position: fixed; inset: 0; z-index: 10;
+      display: block;
+      touch-action: none;       /* prevent scroll-hijack on mobile */
+    }
+
+    /* ============================================================
+       HUD  (score + best + pause)
+    ============================================================ */
+    #hud {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 18px 20px 0;
+      pointer-events: none;
+    }
+
+    .hud-card {
+      background: rgba(42, 29, 66, 0.85);
+      border: 2px solid var(--muted);
+      padding: 8px 14px;
+      text-align: center;
+      /* pixel octagon corners */
+      clip-path: polygon(
+        4px 0%, calc(100% - 4px) 0%,
+        100% 4px, 100% calc(100% - 4px),
+        calc(100% - 4px) 100%, 4px 100%,
+        0% calc(100% - 4px), 0% 4px
+      );
+    }
+    .hud-label { font-size: 5px; color: var(--muted); letter-spacing: 2px; }
+    .hud-val   { font-size: 18px; color: var(--accent1); margin-top: 4px; text-shadow: 0 0 10px rgba(247,200,115,.5); }
+    #hud-score .hud-val { font-size: 26px; }   /* score shown larger */
+
+    /* pause button */
+    #pause-btn {
+      background: rgba(42, 29, 66, 0.85);
+      border: 2px solid var(--muted);
+      color: var(--muted);
+      font-family: 'Press Start 2P', monospace;
+      font-size: 9px;
+      padding: 10px 14px;
+      cursor: none; outline: none;
+      pointer-events: all;
+      clip-path: polygon(
+        4px 0%, calc(100% - 4px) 0%,
+        100% 4px, 100% calc(100% - 4px),
+        calc(100% - 4px) 100%, 4px 100%,
+        0% calc(100% - 4px), 0% 4px
+      );
+      transition: color .15s, border-color .15s;
+    }
+    #pause-btn:hover { color: var(--accent3); border-color: var(--accent3); }
+
+    /* ============================================================
+       RING INDICATOR PIPS  (bottom row of coloured squares)
+    ============================================================ */
+    #ring-pips {
+      position: fixed; bottom: 32px; left: 0; right: 0; z-index: 20;
+      display: flex; justify-content: center; gap: 14px;
+      pointer-events: none;
+    }
+    .pip {
+      width: 8px; height: 8px;
+      border: 2px solid currentColor;
+      transition: background .2s, transform .2s;
+      image-rendering: pixelated;
+    }
+    .pip.active { transform: scale(1.6); }
+
+    /* ============================================================
+       COMBO FLASH  (centred text that pops then fades)
+    ============================================================ */
+    #combo-flash {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 30; pointer-events: none;
+      font-size: 10px; letter-spacing: 2px;
+      opacity: 0;
+      text-shadow: 0 0 20px currentColor;
+    }
+
+    /* ============================================================
+       OVERLAYS  (countdown / game-over / pause)
+    ============================================================ */
+    .overlay {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(26, 16, 37, 0.92);
+      transition: opacity .25s ease;
+    }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+
+    /* ── countdown ── */
+    #countdown-val {
+      font-size: 72px;
+      color: var(--accent1);
+      text-shadow: 4px 4px 0 var(--shadow1), 0 0 40px rgba(247,200,115,.5);
+      animation: countPop .35s cubic-bezier(.34, 1.6, .64, 1);
+    }
+    #countdown-label {
+      font-size: 7px; color: var(--muted);
+      letter-spacing: 3px; margin-top: 12px;
+    }
+    @keyframes countPop {
+      from { transform: scale(1.8); opacity: 0; }
+      to   { transform: scale(1);   opacity: 1; }
+    }
+
+    /* ── game over ── */
+    #go-title {
+      font-size: 14px; color: var(--accent2);
+      letter-spacing: 2px; text-shadow: 0 0 20px var(--accent2);
+      margin-bottom: 22px;
+    }
+    #go-score-label { font-size: 6px; color: var(--muted); letter-spacing: 2px; }
+    #go-score-val {
+      font-size: 56px; color: var(--accent1); line-height: 1.1; margin-top: 6px;
+      text-shadow: 4px 4px 0 var(--shadow1), 0 0 30px rgba(247,200,115,.4);
+    }
+    #go-best { font-size: 6px; color: var(--accent4); letter-spacing: 2px; margin-top: 10px; }
+    #go-new-best {
+      font-size: 8px; color: var(--accent4); letter-spacing: 2px;
+      margin-top: 8px; text-shadow: 0 0 14px var(--accent4);
+      animation: blinkBest .7s ease-in-out infinite;
+      display: none;
+    }
+    @keyframes blinkBest { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+    /* ── pause ── */
+    #pause-title {
+      font-size: 14px; color: var(--accent3);
+      letter-spacing: 2px; text-shadow: 0 0 20px var(--accent3);
+      margin-bottom: 28px;
+    }
+    #pause-score-row { display: flex; gap: 14px; margin-bottom: 8px; }
+
+    /* ============================================================
+       SHARED BUTTON STYLES
+    ============================================================ */
+    .big-btn {
+      margin-top: 26px; position: relative;
+      background: var(--accent1); color: var(--bg);
+      border: none; font-family: 'Press Start 2P', monospace;
+      font-size: 11px; letter-spacing: 2px; padding: 14px 44px;
+      cursor: none; outline: none;
+      clip-path: polygon(
+        6px 0%, calc(100% - 6px) 0%,
+        100% 6px, 100% calc(100% - 6px),
+        calc(100% - 6px) 100%, 6px 100%,
+        0% calc(100% - 6px), 0% 6px
+      );
+      box-shadow: 0 6px 0 var(--shadow1), 0 10px 28px rgba(247,200,115,.28);
+      transition: transform .07s, box-shadow .07s, background .1s;
+    }
+    .big-btn:hover  { background: #ffd98a; transform: translateY(-2px); box-shadow: 0 8px 0 var(--shadow1), 0 16px 40px rgba(247,200,115,.5); }
+    .big-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--shadow1); }
+
+    .ghost-btn {
+      margin-top: 12px;
+      background: transparent; border: 2px solid var(--muted);
+      color: var(--muted); font-family: 'Press Start 2P', monospace;
+      font-size: 7px; letter-spacing: 1px; padding: 10px 28px;
+      cursor: none; outline: none;
+      clip-path: polygon(
+        4px 0%, calc(100% - 4px) 0%,
+        100% 4px, 100% calc(100% - 4px),
+        calc(100% - 4px) 100%, 4px 100%,
+        0% calc(100% - 4px), 0% 4px
+      );
+      transition: color .15s, border-color .15s;
+    }
+    .ghost-btn:hover { color: var(--accent3); border-color: var(--accent3); }
+
+    /* ── screen flash (page transition) ── */
+    #flash {
+      position: fixed; inset: 0; z-index: 90;
+      background: var(--accent1);
+      opacity: 0; pointer-events: none;
+      transition: opacity .12s ease;
+    }
+
+/* ── custom cursor ── */
+    #cursor {
+      position: fixed; z-index: 99; pointer-events: none;
+      width: 10px; height: 10px; background: var(--accent1);
+      box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent1);
+      transform: translate(-50%, -50%);
+      transition: transform .08s, background .1s;
+    }
+    #cursor.click { transform: translate(-50%,-50%) scale(1.8); background: var(--accent2); }
+
+    /* Hide the custom cursor on mobile touch screens */
+    @media (hover: none) and (pointer: coarse) {
+      #cursor { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── custom cursor ── -->
+  <div id="cursor"></div>
+
+  <!-- ── page flash ── -->
+  <div id="flash"></div>
+
+  <!-- ── background layers ── -->
+  <canvas id="starfield"></canvas>
+  <div id="vignette"></div>
+  <div id="scanlines"></div>
+
+  <!-- ── game canvas ── -->
+  <canvas id="game"></canvas>
+
+  <!-- ══════════════════════════════════════════
+       HUD
+  ══════════════════════════════════════════ -->
+  <div id="hud">
+    <div class="hud-card">
+      <div class="hud-label">BEST</div>
+      <div class="hud-val" id="hud-best">0</div>
+    </div>
+    <div class="hud-card" id="hud-score">
+      <div class="hud-label">SCORE</div>
+      <div class="hud-val" id="hud-score-val">0</div>
+    </div>
+    <button id="pause-btn" onclick="pauseGame()">❚❚</button>
+  </div>
+
+  <!-- ── ring indicator pips ── -->
+  <div id="ring-pips">
+    <div class="pip active" id="pip0" style="color:#a78bfa"></div>
+    <div class="pip"        id="pip1" style="color:#67e8b0"></div>
+    <div class="pip"        id="pip2" style="color:#f7c873"></div>
+    <div class="pip"        id="pip3" style="color:#e8845c"></div>
+  </div>
+
+  <!-- ── combo flash ── -->
+  <div id="combo-flash"></div>
+
+  <!-- ══════════════════════════════════════════
+       OVERLAYS
+  ══════════════════════════════════════════ -->
+
+  <!-- countdown -->
+  <div class="overlay" id="overlay-countdown">
+    <div id="countdown-val">3</div>
+    <div id="countdown-label">GET READY</div>
+  </div>
+
+  <!-- game over -->
+  <div class="overlay hidden" id="overlay-gameover">
+    <div id="go-title">GAME OVER</div>
+    <div id="go-score-label">SCORE</div>
+    <div id="go-score-val">0</div>
+    <div id="go-best">BEST: 0</div>
+    <div id="go-new-best">★ NEW BEST ★</div>
+    <button class="big-btn" onclick="restartGame()">▶ RETRY</button>
+    <button class="ghost-btn" onclick="goMenu()">⌂ MENU</button>
+  </div>
+
+  <!-- pause -->
+  <div class="overlay hidden" id="overlay-pause">
+    <div id="pause-title">PAUSED</div>
+    <div id="pause-score-row">
+      <div class="hud-card"><div class="hud-label">SCORE</div><div class="hud-val" id="pause-score">0</div></div>
+      <div class="hud-card"><div class="hud-label">BEST</div><div class="hud-val"  id="pause-best">0</div></div>
+    </div>
+    <button class="big-btn" style="margin-top:22px" onclick="resumeGame()">▶ RESUME</button>
+    <button class="ghost-btn" onclick="goMenu()">⌂ MENU</button>
+  </div>
+
+
+  <script>
+    /* ============================================================
+       CURSOR
+    ============================================================ */
+    const cursor = document.getElementById('cursor');
+    document.addEventListener('mousemove', e => {
+      cursor.style.left = e.clientX + 'px';
+      cursor.style.top  = e.clientY + 'px';
+    });
+    document.addEventListener('mousedown', () => cursor.classList.add('click'));
+    document.addEventListener('mouseup',   () => cursor.classList.remove('click'));
+
+    /* ============================================================
+       GAME CONTROLS
+    ============================================================ */
+    // 'pointerdown' registers both mouse clicks and screen taps
+    document.getElementById('game').addEventListener('pointerdown', (e) => {
+      // Prevent default behavior (like double-tap zooming on some phones)
+      e.preventDefault();
+      handleTap();
+    });
+
+
+    /* ============================================================
+       STARFIELD
+    ============================================================ */
+    const sfEl  = document.getElementById('starfield');
+    const sfCtx = sfEl.getContext('2d');
+
+    function resizeSF() {
+      sfEl.width  = innerWidth;
+      sfEl.height = innerHeight;
+    }
+    resizeSF();
+    window.addEventListener('resize', resizeSF);
+
+    const STARS = Array.from({ length: 95 }, () => ({
+      x:     Math.random() * innerWidth,
+      y:     Math.random() * innerHeight,
+      size:  Math.random() < 0.15 ? 2 : 1,
+      alpha: Math.random(),
+      speed: 0.003 + Math.random() * 0.009,
+      phase: Math.random() * Math.PI * 2,
+    }));
+
+    function drawStarfield(t) {
+      sfCtx.clearRect(0, 0, sfEl.width, sfEl.height);
+      STARS.forEach(s => {
+        const a = s.alpha * (0.4 + 0.6 * Math.sin(t * s.speed + s.phase));
+        sfCtx.fillStyle = `rgba(240,228,205,${a})`;
+        sfCtx.fillRect(Math.round(s.x), Math.round(s.y), s.size, s.size);
+      });
+    }
+
+
+/* ============================================================
+       GAME CANVAS SETUP & CONSTANTS
+    ============================================================ */
+    const gc  = document.getElementById('game');
+    const ctx = gc.getContext('2d');
+    let W, H, CX, CY;
+
+    /* Constants */
+    const RING_COLORS = ['#a78bfa', '#67e8b0', '#f7c873', '#e8845c'];
+    const BASE_GATE_ARC = 0.40;    /* Comfortable, static gate width */
+    
+    /* Fever & Accuracy System State */
+    let perfectStreak   = 0;       /* Tracks consecutive perfect hits */
+    let feverActive     = false;   /* Is Fever Mode running? */
+    let feverTimer      = 0;       /* Countdown for Fever duration */
+    let currentFeedback = "";      /* "PERFECT!" or "GOOD" floating text */
+    let feedbackAlpha   = 0;       /* Fade animation tracker for text */
+    let angleDir        = 1;       /* Orbit direction */
+
+    let BASE_SPEED  = 0.020;     /* starting angular velocity     */
+    let SPEED_INC   = 0.00065;   /* added per successful jump     */
+
+    /* Mutable array for dynamic resizing */
+    let RING_RADII = [0, 0, 0, 0];
+
+    function resizeGame() {
+      W = gc.width  = window.innerWidth;
+      H = gc.height = window.innerHeight;
+      CX = W / 2;
+      CY = H / 2;
+
+      /* Recalculate ring sizes to fit the current screen dimensions */
+      const baseR = Math.min(W, H) * 0.5 * 0.88;
+      RING_RADII[0] = baseR * 0.35;
+      RING_RADII[1] = baseR * 0.55;
+      RING_RADII[2] = baseR * 0.76;
+      RING_RADII[3] = baseR * 0.97;
+    }
+    
+    resizeGame();
+    window.addEventListener('resize', resizeGame);
+
+    /* combo milestone thresholds and their messages */
+    const COMBO_STEPS  = [5, 10, 20];
+    const COMBO_LABELS = ['NICE!', 'GREAT!!', 'PERFECT!!!'];
+
+
+
+/* ============================================================
+       AUDIO SYSTEM (Phase 4)
+       Synthesizes 8-bit retro sounds using Web Audio API
+    ============================================================ */
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    
+    // We will hook this variable up to the settings menu later
+    let isSoundEnabled = true; 
+
+    function playTone(freq, type, duration, vol = 0.05, slideFreq = null) {
+      if (!isSoundEnabled) return;
+      
+      // Browsers suspend audio until the user interacts with the page
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = type; // 'square', 'sawtooth', 'triangle', 'sine'
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      // Set initial pitch
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      
+      // Slide the pitch up or down if a target frequency is provided
+      if (slideFreq) {
+        osc.frequency.exponentialRampToValueAtTime(slideFreq, audioCtx.currentTime + duration);
+      }
+
+      // Volume envelope to prevent popping/clicking at the end of the sound
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    const sfx = {
+      jump:  () => playTone(580, 'square', 0.1, 0.05, 780),  // Short ascending blip
+      combo: () => playTone(880, 'square', 0.15, 0.05, 1200), // Higher, longer ascending blip
+      crash: () => playTone(150, 'sawtooth', 0.35, 0.1, 40)   // Gritty descending buzz
+    };
+
+
+
+/* ============================================================
+       MUTABLE STATE
+    ============================================================ */
+    let score, best, orbitIdx, angle, speed;
+    let gateAngle, gateDir;
+    let gameState;          /* 'countdown' | 'playing' | 'paused' | 'dead' */
+    let particles, trails, confetti;
+    let shakeAmt, comboCount;
+    let ringDash = [0, 0, 0, 0];   /* marching-ant dash offset per ring */
+
+
+    /* ============================================================
+       INIT / RESET
+    ============================================================ */
+    function initState() {
+      score     = 0;
+
+      /* Phase 4: Apply Difficulty Settings */
+      const difficulty = localStorage.getItem('orbitDifficulty') || 'normal';
+      if (difficulty === 'easy') {
+        BASE_SPEED = 0.012;
+        SPEED_INC  = 0.00040;
+      } else if (difficulty === 'hard') {
+        BASE_SPEED = 0.028;
+        SPEED_INC  = 0.00090;
+      } else {
+        /* normal default */
+        BASE_SPEED = 0.020;
+        SPEED_INC  = 0.00065;
+      }
+
+      orbitIdx  = 0;
+      angle     = Math.random() * Math.PI * 2;
+      
+    /* Reset Reward Systems */
+      angleDir        = 1;
+      perfectStreak   = 0;
+      feverActive     = false;
+      feverTimer      = 0;
+      currentFeedback = "";
+      feedbackAlpha   = 0;
+
+      speed     = BASE_SPEED;
+      gateAngle = Math.random() * Math.PI * 2;
+      gateDir   = Math.random() < 0.5 ? 1 : -1;
+      particles = [];
+      trails    = [];
+      confetti  = [];
+      shakeAmt  = 0;
+      comboCount = 0;
+      best = parseInt(localStorage.getItem('orbitBest') || '0');
+      syncHUD();
+      syncPips();
+    }
+
+
+    /* ============================================================
+       HUD SYNC
+    ============================================================ */
+    function syncHUD() {
+      document.getElementById('hud-score-val').textContent = score;
+      document.getElementById('hud-best').textContent      = best;
+      document.getElementById('pause-score').textContent   = score;
+      document.getElementById('pause-best').textContent    = best;
+    }
+
+    function syncPips() {
+      for (let i = 0; i < 4; i++) {
+        const pip = document.getElementById('pip' + i);
+        pip.classList.toggle('active', i === orbitIdx);
+        pip.style.background = (i === orbitIdx) ? RING_COLORS[i] : 'transparent';
+      }
+    }
+
+
+    /* ============================================================
+       PARTICLE SYSTEM
+       All particles are axis-aligned rectangles (pixel aesthetic).
+    ============================================================ */
+    function burst(x, y, color, count = 16) {
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const v = 1.8 + Math.random() * 3.5;
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+          life: 1,
+          color,
+          sz: 2 + Math.floor(Math.random() * 3) * 2,   /* 2, 4, or 6px */
+        });
+      }
+    }
+
+    function deathBurst(x, y) {
+      burst(x, y, '#e8845c', 28);
+    }
+
+    function tickParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        ctx.save();
+        ctx.globalAlpha = p.life * 0.88;
+        ctx.fillStyle   = p.color;
+        ctx.fillRect(Math.round(p.x) - p.sz / 2, Math.round(p.y) - p.sz / 2, p.sz, p.sz);
+        ctx.restore();
+        p.x  += p.vx;  p.y  += p.vy;
+        p.vx *= 0.91;  p.vy *= 0.91;
+        p.life -= 0.038;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    /* ============================================================
+       CONFETTI SYSTEM (Phase 3)
+    ============================================================ */
+    const CONFETTI_COLORS = ['#f7c873', '#e8845c', '#a78bfa', '#67e8b0', '#ffffff'];
+
+    function launchConfetti(amount = 120) {
+      for (let i = 0; i < amount; i++) {
+        confetti.push({
+          x: Math.random() * W,
+          y: -Math.random() * H, /* Spawn randomly above the screen */
+          vx: (Math.random() - 0.5) * 6,
+          vy: 2 + Math.random() * 6,
+          size: 4 + Math.floor(Math.random() * 4) * 2, /* 4px, 6px, 8px or 10px pixels */
+          color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+          angle: Math.random() * 360,
+          spinSpeed: (Math.random() - 0.5) * 15
+        });
+      }
+    }
+
+    function tickConfetti() {
+      for (let i = confetti.length - 1; i >= 0; i--) {
+        const c = confetti[i];
+        
+        /* Apply velocity and gravity */
+        c.x += c.vx;
+        c.y += c.vy;
+        c.vy += 0.08; /* Gravity */
+        c.vx *= 0.98; /* Air resistance */
+        c.angle += c.spinSpeed;
+
+        /* Draw pixel confetti */
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.rotate((c.angle * Math.PI) / 180);
+        ctx.fillStyle = c.color;
+        ctx.fillRect(-c.size / 2, -c.size / 2, c.size, c.size);
+        ctx.restore();
+
+        /* Remove if it falls past the bottom of the screen */
+        if (c.y > H + 20) {
+          confetti.splice(i, 1);
+        }
+      }
+    }
+
+
+    /* ============================================================
+       DOT TRAIL
+       Short-lived ghost squares left behind the orbiting dot.
+    ============================================================ */
+    function addTrail(x, y, color) {
+      trails.push({ x, y, life: 0.8, color });
+    }
+
+    function tickTrails() {
+      for (let i = trails.length - 1; i >= 0; i--) {
+        const t = trails[i];
+        ctx.save();
+        ctx.globalAlpha = t.life * 0.38;
+        ctx.fillStyle   = t.color;
+        const sz = Math.max(2, Math.round(t.life * 6));
+        ctx.fillRect(Math.round(t.x) - sz / 2, Math.round(t.y) - sz / 2, sz, sz);
+        ctx.restore();
+        t.life -= 0.055;
+        if (t.life <= 0) trails.splice(i, 1);
+      }
+    }
+
+
+    /* ============================================================
+       COMBO FLASH
+    ============================================================ */
+    function showCombo(text, color) {
+      const el = document.getElementById('combo-flash');
+      el.textContent = text;
+      el.style.color = color;
+      el.style.transition = 'none';
+      el.style.opacity    = '1';
+      el.style.transform  = 'translate(-50%, -50%) scale(1.3)';
+      requestAnimationFrame(() => {
+        el.style.transition = 'opacity .65s ease, transform .65s ease';
+        el.style.opacity    = '0';
+        el.style.transform  = 'translate(-50%, -62%) scale(1)';
+      });
+    }
+
+
+    /* ============================================================
+       GATE DETECTION
+    ============================================================ */
+    function inGate() {
+      let d = angle - gateAngle;
+      d = ((d % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      if (d > Math.PI) d = Math.PI * 2 - d;
+      return d < currentGateArc; // Uses dynamic shrinking boundary
+    }
+
+
+/* ============================================================
+       TAP / CLICK HANDLER  — Accuracy & Fever System
+    ============================================================ */
+    function handleTap() {
+      if (gameState !== 'playing') return;
+
+      const r  = RING_RADII[orbitIdx];
+      const px = CX + Math.cos(angle) * r;
+      const py = CY + Math.sin(angle) * r;
+
+      /* 1. Calculate exact distance from gate center */
+      let distance = angle - gateAngle;
+      distance = ((distance % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      if (distance > Math.PI) distance = Math.PI * 2 - distance;
+
+      /* Fever mode makes the gate much larger! */
+      let dynamicGateArc = feverActive ? BASE_GATE_ARC * 2.0 : BASE_GATE_ARC;
+
+      if (distance < dynamicGateArc) {
+        /* ─── SUCCESSFUL JUMP ─── */
+        let pointsEarned = 1;
+        
+        // 2. Perfect Hit Check (Within 0.09 radians of center)
+        if (distance < 0.09 && !feverActive) {
+          perfectStreak++;
+          pointsEarned = 2; // Double points
+          currentFeedback = "PERFECT! +2";
+          feedbackAlpha = 1.0;
+          burst(px, py, '#ffffff'); 
+          sfx.combo(); 
+          
+          if (perfectStreak >= 3) {
+            feverActive = true;
+            feverTimer = 5000; // 5 seconds of Fever Mode
+            currentFeedback = "FEVER MODE!!";
+            shakeAmt = 8;
+          }
+        } else {
+          // Standard hit
+          if (!feverActive) perfectStreak = 0; // Break streak
+          currentFeedback = feverActive ? "FEVER! +3" : "GOOD!";
+          feedbackAlpha = 1.0;
+          pointsEarned = feverActive ? 3 : 1; 
+          burst(px, py, RING_COLORS[orbitIdx]);
+          sfx.jump();
+        }
+
+        score += pointsEarned;
+        speed = BASE_SPEED + score * SPEED_INC;
+
+        /* Move to next ring */
+        orbitIdx  = (orbitIdx + 1) % 4;
+        gateAngle = Math.random() * Math.PI * 2;
+        gateDir   = Math.random() < 0.5 ? 1 : -1;
+
+        syncPips();
+        if (score > best) {
+          best = score;
+          localStorage.setItem('orbitBest', best);
+        }
+        syncHUD();
+
+      } else {
+        /* ─── MISS → CRASH ─── */
+        sfx.crash();
+        deathBurst(px, py);
+        shakeAmt  = 12;
+        gameState = 'dead';
+        setTimeout(() => showGameOver("CRASHED"), 650);
+      }
+    }
+
+
+    /* ============================================================
+       DRAW — RINGS
+    ============================================================ */
+    function drawRings() {
+      RING_RADII.forEach((r, i) => {
+        const isActive = (i === orbitIdx);
+
+        /* dashed ring track (marching-ant animation) */
+        ctx.save();
+        ctx.strokeStyle    = RING_COLORS[i];
+        ctx.globalAlpha    = isActive ? 0.28 : 0.10;
+        ctx.lineWidth      = 1.5;
+        ctx.setLineDash([5, 9]);
+        ctx.lineDashOffset = ringDash[i];
+        ctx.beginPath();
+        ctx.arc(CX, CY, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+
+        /* gate on the active ring only */
+        if (isActive) {
+          const ga = gateAngle;
+          
+          let dynamicGateArc = feverActive ? BASE_GATE_ARC * 2.0 : BASE_GATE_ARC;
+          let activeGateColor = feverActive ? (Math.floor(Date.now() / 100) % 2 === 0 ? '#ffffff' : 'var(--accent1)') : RING_COLORS[orbitIdx];
+
+          ctx.save();
+          ctx.lineCap = 'round';
+
+          /* outer bloom */
+          ctx.strokeStyle = activeGateColor;
+          ctx.globalAlpha = feverActive ? 0.35 : 0.16;
+          ctx.lineWidth   = feverActive ? 22 : 16;
+          ctx.beginPath(); 
+          ctx.arc(CX, CY, r, ga - dynamicGateArc, ga + dynamicGateArc); 
+          ctx.stroke();
+
+        /* inner core */
+          ctx.globalAlpha = 1.0;
+          ctx.lineWidth   = 6;
+          ctx.beginPath(); 
+          ctx.arc(CX, CY, r, ga - dynamicGateArc, ga + dynamicGateArc); 
+          ctx.stroke();
+
+          /* ─── PRECISION INDICATOR (THE AIM DOT) ─── */
+          ctx.strokeStyle = '#ffffff'; // White indicator
+          ctx.globalAlpha = 0.6;       // Subtle, not distracting
+          ctx.lineWidth   = 3;
+          ctx.beginPath();
+          // This draws a small dash at the exact gateAngle (the center)
+          ctx.arc(CX, CY, r, ga - 0.03, ga + 0.03); 
+          ctx.stroke();
+          
+          ctx.restore();
+        }
+      });
+    }
+
+
+    /* ============================================================
+       DRAW — CENTER NODE
+    ============================================================ */
+    function drawCenter() {
+      ctx.save();
+      /* soft outer ring */
+      ctx.strokeStyle  = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth    = 1;
+      ctx.beginPath(); ctx.arc(CX, CY, 11, 0, Math.PI * 2); ctx.stroke();
+      /* pixel square */
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(CX - 4, CY - 4, 8, 8);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(CX - 7, CY - 7, 14, 14);
+      ctx.restore();
+    }
+
+
+    /* ============================================================
+       DRAW — ORBITING DOT
+    ============================================================ */
+    function drawDot() {
+      const r   = RING_RADII[orbitIdx];
+      const px  = CX + Math.cos(angle) * r;
+      const py  = CY + Math.sin(angle) * r;
+      const col = RING_COLORS[orbitIdx];
+
+      addTrail(px, py, col);
+
+      /* radial glow behind dot */
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      const grd = ctx.createRadialGradient(px, py, 0, px, py, 16);
+      grd.addColorStop(0, col);
+      grd.addColorStop(1, 'transparent');
+      ctx.fillStyle = grd;
+      ctx.fillRect(px - 16, py - 16, 32, 32);
+      ctx.restore();
+
+      /* 10×10 pixel dot */
+      ctx.fillStyle = col;
+      ctx.fillRect(Math.round(px) - 5, Math.round(py) - 5, 10, 10);
+      /* 3×3 highlight in top-left corner */
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillRect(Math.round(px) - 5, Math.round(py) - 5, 3, 3);
+    }
+
+
+    /* ============================================================
+       MAIN ANIMATION LOOP
+    ============================================================ */
+    let lastTime = 0;
+
+    function loop(t) {
+      requestAnimationFrame(loop);
+      const dt = Math.min(t - lastTime, 50);   /* clamp to avoid spiral of death */
+      lastTime = t;
+
+      /* ── screen shake ── */
+      if (shakeAmt > 0.5) {
+        const ox = (Math.random() - 0.5) * shakeAmt;
+        const oy = (Math.random() - 0.5) * shakeAmt;
+        ctx.save();
+        ctx.translate(ox, oy);
+        shakeAmt *= 0.72;
+      }
+
+      /* clear */
+      ctx.fillStyle = '#1a1025';
+      ctx.fillRect(-20, -20, W + 40, H + 40);
+
+    /* advance marching-ant offsets */
+      ringDash[0] += 0.05;
+      ringDash[1] -= 0.04;
+      ringDash[2] += 0.035;
+      ringDash[3] -= 0.025;
+
+      /* slowly drift the gate window */
+      gateAngle += 0.004 * gateDir;
+
+    /* ══════════════════════════════════════════
+         FEVER & TIMING TICKER
+      ══════════════════════════════════════════ */
+      if (gameState === 'playing') {
+        if (feverActive) {
+          feverTimer -= dt;
+          if (feverTimer <= 0) {
+            feverActive = false;
+            perfectStreak = 0;
+            currentFeedback = "FEVER OVER";
+            feedbackAlpha = 1.0;
+          }
+        }
+      }
+
+
+      /* draw everything */
+      drawStarfield(t);
+      tickTrails();
+      drawRings();
+      drawCenter();
+
+      if (gameState === 'playing' || gameState === 'dead') {
+        angle += speed * angleDir; // Applies variable clockwise or counter-clockwise tracking
+        drawDot();
+      }
+
+      /* Draw popup accuracy text */
+      if (feedbackAlpha > 0) {
+        ctx.save();
+        ctx.fillStyle = feverActive ? "var(--accent1)" : (perfectStreak > 0 ? "#ffffff" : "var(--accent4)");
+        ctx.font = "8px 'Press Start 2P', monospace";
+        ctx.textAlign = "center";
+        ctx.globalAlpha = feedbackAlpha;
+        ctx.fillText(currentFeedback, CX, CY - 20);
+        ctx.restore();
+        
+        feedbackAlpha -= 0.02;
+      }
+
+      tickParticles();
+
+      /* Phase 3: Only draw confetti if the game is over */
+      if (gameState === 'dead') {
+        tickConfetti();
+      }
+
+      if (shakeAmt > 0.5) ctx.restore();
+    }
+
+
+    /* ============================================================
+       OVERLAY HELPERS
+    ============================================================ */
+    function showOverlay(id) {
+      document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+      document.getElementById(id).classList.remove('hidden');
+    }
+    function hideAllOverlays() {
+      document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+    }
+
+
+    /* ============================================================
+       GAME STATE TRANSITIONS
+    ============================================================ */
+function showGameOver(reason = "GAME OVER") {
+      gameState = 'dead';
+      /* increment play count */
+      const plays = parseInt(localStorage.getItem('orbitPlays') || '0') + 1;
+      localStorage.setItem('orbitPlays', plays);
+
+      /* Phase 5: Save to Leaderboard History */
+      if (score > 0) {
+        let history = JSON.parse(localStorage.getItem('orbitHistory') || '[]');
+        const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        history.push({ score: score, date: dateStr });
+        history.sort((a, b) => b.score - a.score); // Sort highest to lowest
+        history = history.slice(0, 5);             // Keep only the top 5
+        
+        localStorage.setItem('orbitHistory', JSON.stringify(history));
+      }
+
+      // Dynamic title showing the cause of death!
+      document.getElementById('go-title').textContent = reason;
+      document.getElementById('go-score-val').textContent = score;
+      document.getElementById('go-best').textContent      = 'BEST: ' + best;
+      const isNewBest = score >= best && score > 0;
+      document.getElementById('go-new-best').style.display = isNewBest ? 'block' : 'none';
+
+      launchConfetti(); /* PHASE 3: Trigger the confetti shower! */
+
+      showOverlay('overlay-gameover');
+    }
+
+    function pauseGame() {
+      if (gameState !== 'playing') return;
+      gameState = 'paused';
+      document.getElementById('pause-score').textContent = score;
+      document.getElementById('pause-best').textContent  = best;
+      showOverlay('overlay-pause');
+    }
+
+    function resumeGame() {
+      hideAllOverlays();
+      startCountdown(() => { gameState = 'playing'; });
+    }
+
+    function restartGame() {
+      hideAllOverlays();
+      initState();
+      startCountdown(() => { gameState = 'playing'; });
+    }
+
+    function goMenu() {
+      /* flash transition then navigate back */
+      const flash = document.getElementById('flash');
+      flash.style.opacity       = '1';
+      flash.style.pointerEvents = 'all';
+      setTimeout(() => {
+        window.location.href = 'index.html';
+      }, 280);
+    }
+
+
+    /* ============================================================
+       COUNTDOWN  3 → 2 → 1 → GO!
+    ============================================================ */
+    function startCountdown(callback) {
+      let n = 3;
+      const el = document.getElementById('countdown-val');
+      showOverlay('overlay-countdown');
+
+      function tick() {
+        /* re-trigger pop animation */
+        el.style.animation = 'none';
+        void el.offsetWidth;           /* force reflow */
+        el.style.animation = 'countPop .35s cubic-bezier(.34,1.6,.64,1)';
+        el.textContent = n > 0 ? String(n) : 'GO!';
+
+        if (n === 0) {
+          setTimeout(() => { hideAllOverlays(); callback(); }, 450);
+          return;
+        }
+        n--;
+        setTimeout(tick, 900);
+      }
+      tick();
+    }
+
+
+    /* ============================================================
+       BOOT
+    ============================================================ */
+    initState();
+    requestAnimationFrame(loop);
+    startCountdown(() => { gameState = 'playing'; });
+
+  </script>
+</body>
+</html>
