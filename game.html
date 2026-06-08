@@ -822,6 +822,11 @@
         score += pointsEarned;
         speed = BASE_SPEED + score * SPEED_INC;
 
+        /* Reverses the spin direction on every single successful gate clear! */
+        angleDir *= -1; 
+
+        /* Move to next ring */
+
         /* Move to next ring */
         orbitIdx  = (orbitIdx + 1) % 4;
         gateAngle = Math.random() * Math.PI * 2;
@@ -907,19 +912,36 @@
 
 
     /* ============================================================
-       DRAW — CENTER NODE
+       DRAW — CENTER NODE (Directional Spinner UI)
     ============================================================ */
     function drawCenter() {
       ctx.save();
-      /* soft outer ring */
-      ctx.strokeStyle  = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth    = 1;
-      ctx.beginPath(); ctx.arc(CX, CY, 11, 0, Math.PI * 2); ctx.stroke();
-      /* pixel square */
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(CX - 4, CY - 4, 8, 8);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(CX - 7, CY - 7, 14, 14);
+      ctx.translate(CX, CY);
+      
+      // Slowly spin the entire center core node to match the current orbit direction
+      // This visually indicates tracking direction to the user instantly
+      const rotationSpeed = (Date.now() * 0.003) * angleDir;
+      ctx.rotate(rotationSpeed);
+
+      /* Draw a pixelated diamond/cross anchor */
+      ctx.fillStyle = feverActive ? 'var(--accent1)' : 'rgba(255,255,255,0.85)';
+      
+      // Central structural block
+      ctx.fillRect(-4, -4, 8, 8);
+      
+      // Extended pointer nubs that form a clean crosshairs directional UI
+      ctx.fillRect(-2, -8, 4, 3);  // Top pointer
+      ctx.fillRect(-2, 5, 4, 3);   // Bottom pointer
+      ctx.fillRect(-8, -2, 3, 4);  // Left pointer
+      ctx.fillRect(5, -2, 3, 4);   // Right pointer
+
+      /* Secondary decorative ring wrapper */
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.stroke();
+
       ctx.restore();
     }
 
