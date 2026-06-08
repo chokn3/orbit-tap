@@ -503,50 +503,54 @@
       crash: () => playTone(150, 'sawtooth', 0.35, 0.1, 40)   // Gritty descending buzz
     };
 
-    // --- 8-BIT MUSIC SEQUENCER ---
-    function playMusicTone(freq, vol = 0.02) {
+// --- QUIET, LONG-FORM 8-BIT MUSIC SEQUENCER ---
+    function playMusicTone(freq, vol = 0.008) { // Set very low default volume to stay out of the way
       if (!isSoundEnabled) return;
       if (audioCtx.state === 'suspended') audioCtx.resume();
       
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       
-      osc.type = 'square'; // Classic retro Nintendo sound
+      osc.type = 'triangle'; // Mellow, smooth retro tone (not harsh or distracting)
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       
       osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
       
-      // Fast attack and decay for a short, plucked chiptune note
+      // Soft audio envelope to prevent clicking
       gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
       
       osc.start();
-      osc.stop(audioCtx.currentTime + 0.1);
+      osc.stop(audioCtx.currentTime + 0.18);
     }
 
     let bgmInterval;
     function startBGM() {
       clearInterval(bgmInterval);
       
-      // A spacey, high-energy C minor pentatonic arpeggio sequence
+      // A full, 32-note cinematic retro chord progression (Em -> C -> G -> D)
+      // It takes several seconds to complete a loop, making it feel like a real song
       const notes = [
-        261.63, 311.13, 392.00, 523.25, 
-        392.00, 311.13, 261.63, 196.00,
-        261.63, 311.13, 392.00, 622.25,
-        523.25, 392.00, 311.13, 196.00
+        // Measure 1: E Minor Accent
+        164.81, 196.00, 246.94, 329.63, 246.94, 196.00, 164.81, 246.94,
+        // Measure 2: C Major Shift
+        130.81, 164.81, 196.00, 261.63, 196.00, 164.81, 130.81, 196.00,
+        // Measure 3: G Major Lift
+        196.00, 246.94, 293.66, 392.00, 293.66, 246.94, 196.00, 246.94,
+        // Measure 4: D Major Resolution
+        146.83, 185.00, 220.00, 293.66, 220.00, 185.00, 146.83, 220.00
       ];
       let step = 0;
       
       bgmInterval = setInterval(() => {
-        // Only play music while the game is active or counting down
+        // Only play music notes if active or counting down (silences automatically when paused)
         if (gameState === 'playing' || gameState === 'countdown') {
           playMusicTone(notes[step]);
           step = (step + 1) % notes.length;
         }
-      }, 130); // Speed of the track (lower is faster)
+      }, 150); // Steady, relaxed tracking speed
     }
-
 
 
 /* ============================================================
@@ -1115,12 +1119,12 @@ function showGameOver(reason = "GAME OVER") {
     /* ============================================================
        COUNTDOWN  3 → 2 → 1 → GO!
     ============================================================ */
-      function startCountdown(callback) {
+    function startCountdown(callback) {
       let n = 3;
       const el = document.getElementById('countdown-val');
       
-      gameState = 'countdown'; // Let the system know it's safe to play audio
-      startBGM();              // Start the music loop
+      gameState = 'countdown'; // Flag state early so music allows itself to play
+      startBGM();              // Fire up our ambient music loop
       
       showOverlay('overlay-countdown');
 
