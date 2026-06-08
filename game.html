@@ -814,7 +814,8 @@
           const ga = gateAngle;
           
           let dynamicGateArc = feverActive ? BASE_GATE_ARC * 2.0 : BASE_GATE_ARC;
-          let activeGateColor = feverActive ? (Math.floor(Date.now() / 100) % 2 === 0 ? '#ffffff' : 'var(--accent1)') : RING_COLORS[orbitIdx];
+          // Keep the gate a solid white during fever mode so it doesn't flash
+          let activeGateColor = feverActive ? '#ffffff' : RING_COLORS[orbitIdx];
 
           ctx.save();
           ctx.lineCap = 'round';
@@ -916,8 +917,14 @@
         shakeAmt *= 0.72;
       }
 
-      /* clear */
-      ctx.fillStyle = '#1a1025';
+        /* clear */
+      if (feverActive) {
+        // Subtle, dark color shift based on the animation time (t)
+        const hue = (t / 15) % 360;
+        ctx.fillStyle = `hsl(${hue}, 45%, 15%)`;
+      } else {
+        ctx.fillStyle = '#1a1025';
+      }
       ctx.fillRect(-20, -20, W + 40, H + 40);
 
     /* advance marching-ant offsets */
