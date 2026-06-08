@@ -155,6 +155,11 @@
       background: var(--accent2);
     }
 
+    /* Hide the custom cursor on mobile touch screens */
+    @media (hover: none) and (pointer: coarse) {
+      #cursor { display: none !important; }
+    }
+
     /* ============================================================
        ENTRANCE ANIMATIONS
        Every element fades + rises in with a staggered delay.
