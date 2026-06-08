@@ -500,6 +500,22 @@
         </select>
       </div>
 
+      <div style="margin-bottom: 20px; text-align: left;">
+        <label style="font-size: 6px; color: var(--muted); letter-spacing: 2px; display: block; margin-bottom: 8px;">MUSIC</label>
+        <select id="music-select" style="width: 100%; background: var(--bg2); color: var(--text); font-family: 'Press Start 2P', monospace; font-size: 8px; padding: 10px; border: 1px solid var(--muted); outline: none; cursor: pointer;">
+          <option value="1">ON</option>
+          <option value="0">OFF</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 20px; text-align: left;">
+        <label style="font-size: 6px; color: var(--muted); letter-spacing: 2px; display: block; margin-bottom: 8px;">SOUND EFFECTS</label>
+        <select id="sfx-select" style="width: 100%; background: var(--bg2); color: var(--text); font-family: 'Press Start 2P', monospace; font-size: 8px; padding: 10px; border: 1px solid var(--muted); outline: none; cursor: pointer;">
+          <option value="1">ON</option>
+          <option value="0">OFF</option>
+        </select>
+      </div>
+
       <button style="margin-top: 16px; background: var(--accent1); color: var(--bg); border: none; font-family: 'Press Start 2P', monospace; font-size: 9px; padding: 12px 20px; cursor: pointer; box-shadow: 0 4px 0 var(--shadow1);" onclick="saveAndCloseOptions()">SAVE & CLOSE</button>
     </div>
   </div>
@@ -789,22 +805,22 @@
 /* ============================================================
        OPTIONS MENU LOGIC
     ============================================================ */
-    function showOptions() {
+function showOptions() {
       const overlay = document.getElementById('overlay-options');
-      const diffSelect = document.getElementById('diff-select');
       
-      // Load saved difficulty (default to normal)
-      diffSelect.value = localStorage.getItem('orbitDifficulty') || 'normal';
+      document.getElementById('diff-select').value = localStorage.getItem('orbitDifficulty') || 'normal';
+      document.getElementById('music-select').value = localStorage.getItem('orbitMusic') || '1';
+      document.getElementById('sfx-select').value = localStorage.getItem('orbitSfx') || '1';
       
       overlay.style.display = 'flex';
     }
 
     function saveAndCloseOptions() {
       const overlay = document.getElementById('overlay-options');
-      const diffSelect = document.getElementById('diff-select');
       
-      // Save difficulty
-      localStorage.setItem('orbitDifficulty', diffSelect.value);
+      localStorage.setItem('orbitDifficulty', document.getElementById('diff-select').value);
+      localStorage.setItem('orbitMusic', document.getElementById('music-select').value);
+      localStorage.setItem('orbitSfx', document.getElementById('sfx-select').value);
       
       overlay.style.display = 'none';
     }
